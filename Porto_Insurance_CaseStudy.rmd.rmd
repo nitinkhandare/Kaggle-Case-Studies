@@ -1,0 +1,148 @@
+---
+title: "AssignmentNo.3 ML"
+author: "Nitin Khandare"
+date: "July 9, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(data.table)
+library(Matrix)
+library(xgboost)
+library(caret)
+library(dplyr)
+library(MLmetrics)
+library(VIM)
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Sample data in train and test 
+```{r}
+train = fread("E:/Term 2/Machine Learning/Assignment-3ML/train.csv",sep=",", na.strings = "", stringsAsFactors=T)
+test = fread("E:/Term 2/Machine Learning/Assignment-3ML/test.csv",sep=",", na.strings = "", stringsAsFactors=T)
+```
+### structure of Data
+
+```{r}
+porto = cbind(train,test)
+
+glimpse(porto)
+```
+
+### summary of Data
+```{r}
+summary(porto)
+```
+
+### Missing Value 
+```{r}
+colSums(is.na(porto))
+
+aggr(porto)
+```
+
+
+## Normalized Gini Function For XGB
+```{r}
+
+set.seed(101)
+
+Normalized_Gini_XGB = function(preds, train){
+  actual = getinfo(dtrain, "label")
+  score = NormalizedGini(preds,actual)
+  return(list(metric = "NormalizedGini", value = score))
+}
+```
+
+#### Combine Train And Test File
+```{r}
+test$target <- NA
+data <- rbind(train, test)
+rm(train,test);gc()
+
+```
+
+### Feature Selection and Extraction (Feature Engineering)
+```{r}
+data[, amount_nas := rowSums(data == -1, na.rm = T)]
+data[, high_nas := ifelse(amount_nas>4,1,0)]
+data[, ps_car_13_ps_reg_03 := ps_car_13*ps_reg_03]
+data[, ps_reg_mult := ps_reg_01*ps_reg_02*ps_reg_03]
+data[, ps_ind_bin_sum := ps_ind_06_bin+ps_ind_07_bin+ps_ind_08_bin+ps_ind_09_bin+ps_ind_10_bin+ps_ind_11_bin+ps_ind_12_bin+ps_ind_13_bin+ps_ind_16_bin+ps_ind_17_bin+ps_ind_18_bin]
+```
+
+
+#### CVFolds on Data and Prepare for xgb
+```{r}
+
+cvFolds = createFolds(data$target[!is.na(data$target)], k=5, list=TRUE, returnTrain=FALSE)
+varnames = setdiff(colnames(data), c("id", "target"))
+train_sparse = Matrix(as.matrix(data[!is.na(target), varnames, with=F]), sparse=TRUE)
+test_sparse = Matrix(as.matrix(data[is.na(target), varnames, with=F]), sparse=TRUE)
+y_train = data[!is.na(target),target]
+test_ids = data[is.na(target),id]
+dtrain = xgb.DMatrix(data=train_sparse, label=y_train)
+dtest = xgb.DMatrix(data=test_sparse)
+
+```
+
+
+### Params for xgb Model Cross-Validation
+```{r}
+
+param_s = list(booster="gbtree",
+              objective="binary:logistic",
+              eta = 0.02,
+              gamma = 1,
+              max_depth = 7,
+              min_child_weight = 1,
+              subsample = 0.8,
+              colsample_bytree = 0.8
+)
+```
+
+### XGB Cross-Validation 
+```{r}
+
+xgb_cvFolds = xgb.cv(data = dtrain,
+                  params = param_s,
+                  nrounds = 5000,
+                  feval = Normalized_Gini_XGB,
+                  maximize = TRUE,
+                  prediction = TRUE,
+                  folds = cvFolds,
+                  print_every_n = 25,
+                  early_stopping_round = 30)
+
+```
+
+### Create nrounds
+```{r}
+best_iter <- xgb_cvFolds$best_iteration
+best_iter <- 540
+
+```
+
+#### XGBoost model fitting
+```{r}
+cat("xgb model")
+xgb_model <- xgb.train(data = dtrain,
+                       params = param_s,
+                       nrounds = best_iter,
+                       feval = Normalized_Gini_XGB,
+                       maximize = TRUE,
+                       watchlist = list(train = dtrain),
+                       verbose = 1,
+                       print_every_n = 25
+)
+```
+
+
+### Prediction CSV File
+```{r}
+
+preds <- data.table(id=test_ids, target=predict(xgb_model,dtest))
+write.table(preds, "SubmitFileXGB.csv", sep=",", dec=".", quote=FALSE, row.names=FALSE)
+```
+
