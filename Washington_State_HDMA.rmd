@@ -1,0 +1,182 @@
+---
+title: "Washington_State_Home_Loan_Analysis"
+author: "Nitin Khandare"
+date: "August 31, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+library(tidyverse)
+library(readr) 
+library(RColorBrewer)
+library(ggthemes)
+library(corrgram)
+library(VIM)
+hp = read.csv("E:/Term 3/CaseStudies/Washington_State_HDMA-2016/Washington_State_HDMA-2016.csv")
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Structure of the data
+```{r}
+str(hp)
+```
+
+
+### Summary of the Data
+```{r}
+summary(hp)
+```
+
+
+### check the missign values NA values from the Data
+```{r}
+colSums(is.na(hp))
+```
+
+```{r}
+#impute missing values with median
+hp$rate_spread[is.na(hp$rate_spread)] <- median(hp$rate_spread, na.rm = TRUE)
+
+#impute 0 with median
+combi$Item_Visibility <- ifelse(combi$Item_Visibility == 0, median(combi$Item_Visibility),                                   combi$Item_Visibility)
+
+#find mode and impute
+table(combi$Outlet_Size, combi$Outlet_Type)
+evels(combi$Outlet_Size)[1] <- "Other"
+```
+
+#### Missing value treatment from the Data using median
+```{r}
+
+
+impute_BY_Median <- function(df){
+  num = sapply(df, is.numeric)
+  imp = function(x){
+  ind_na <- is.na(x)
+  if(sum(ind_na)/length(x) < 0.4){
+    x[ind_na] <- median(x[!ind_na])
+  }
+  return(x)
+  }
+  return(as.data.frame(sapply(df[,num], imp)))
+}
+
+new_hp = impute_BY_Median(hp)
+
+colSums(is.na(hp))
+
+
+VIM::aggr(hp)
+
+
+```
+
+### Remove higher outlier column and high missing value Column. (if both are there just discard it)
+```{r}
+
+whp = hp_new %>% select(-rate_spread)
+
+colSums(is.na(whp))
+
+PerOutier(whp)
+
+```
+
+
+
+
+### Check the level of outliers in every column of Data
+```{r}
+boxplot(whp)
+```
+
+
+### check the Percentage of outlier in data column vise
+```{r}
+
+PerOutier = function(df){
+  num=sapply(df, is.numeric)
+  NumOut = function(x){
+    q1 = quantile(x, 0.25, na.rm = T)
+    q2 = quantile(x, 0.50, na.rm = T)
+    q3 = quantile(x, 0.75, na.rm = T)
+    iqr = IQR(x, na.rm = T)
+    outlier = x[x < q1 - 1.5 * iqr | x > q3 + 1.5 * iqr]
+    percent = (length(outlier) / length(x))*100
+return(percent)
+  }
+  data=sapply(df[,num], NumOut)
+   return(as.data.frame(data))
+}
+PerOutier(hp)
+
+```
+
+
+
+```{r}
+
+### outlier treatment for application_income column
+{{quantiles1 = quantile(whp$applicant_income_000s, probs = c(.25, .75),na.rm = T)
+
+range1 = 1.5 * IQR(whp$applicant_income_000s,na.rm = T)
+
+normal_hp = subset(whp,whp$applicant_income_000s > (quantiles1[1] - range1) & whp$applicant_income_000s < (quantiles1[2] + range1))}}
+
+
+### outlier treatment for sequence_number 
+
+{{quantiles2 = quantile(normal_hp$sequence_number,probs = c(.25, .75),na.rm = T)
+
+range2 = 1.5 * IQR(normal_hp$sequence_number,na.rm = T)
+
+normal_hp = subset(normal_hp,normal_hp$sequence_number > (quantiles2[1] - range2) & normal_hp$sequence_number < (quantiles2[2] + range2))}}
+
+
+### outlier treatment for census_tract_number
+
+{{qunatiles3 = quantile(normal_hp$census_tract_number,probs = c(0.25, .75),na.rm = T)
+
+range3 = 1.5 * IQR(normal_hp$census_tract_number, na.rm = T)
+
+normal_hp = subset(normal_hp,normal_hp$census_tract_number > (qunatiles3[1] - range3) & normal_hp$census_tract_number < (qunatiles3[2] + range3))}}
+
+
+PerOutier(normal_hp)
+```
+
+
+
+### WE Get the clean Data after NA values and Outlier treatment
+```{r}
+aggr(normal_hp)
+
+```
+
+### Plotting of the Data
+```{r}
+hp %>%
+  group_by(loan_purpose_name) %>%
+  summarise(Count = n()) %>%
+  arrange(desc(Count)) %>%
+  ggplot(aes(reorder(loan_purpose_name, Count), y = Count, fill = Count)) + 
+  geom_bar(stat ='identity') +  
+  coord_flip() +
+  theme_fivethirtyeight() + 
+  theme(legend.position ='none', axis.text.x = element_text(size = 15), axis.text.y = element_text(size = 20)) +
+  scale_fill_gradientn(name = '',colours = rev(brewer.pal(10,'Spectral'))) +
+  ggtitle('Loan Purpose Counts')
+```
+
+```{r}
+ggplot(hp, aes(x=population)) + 
+  geom_density() + 
+  theme(legend.position="none") +
+  ylab("Density") +
+  xlab("Population") + 
+  ggtitle("Population Density") + 
+  geom_vline(aes(xintercept=mean(population)), color="blue", linetype="solid", size=1) 
+```
+
