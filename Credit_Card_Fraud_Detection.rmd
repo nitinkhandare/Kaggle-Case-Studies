@@ -1,0 +1,182 @@
+---
+title: "Credit Card Fraud Detection"
+author: "Nitin Khandare"
+date: "August 29, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(randomForest)
+library(e1071)
+library(rpart)
+library(rpart.plot)
+library(caTools)
+library(readr)
+library(caret)
+library(tidyverse)
+library(caret)
+library(VIM)
+library(pROC)
+library(ROCR)
+
+card = read.csv('E:/Term 3/CaseStudies/Credit_Card_fraud_Detection/creditcard.csv')
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### structure of Data
+```{r}
+str(card)
+glimpse(card)
+```
+
+### Symmary of the Data
+```{r}
+summary(card)
+```
+
+### Check the Missing Values from Data
+```{r}
+colSums(is.na(card))
+
+aggr(card)
+
+```
+
+### Check the correlation between Columns
+```{r}
+num = sapply(card, function(x) is.numeric(x) & length(unique(x))>1)
+corrplot(cor(card[,num]),order = 'hclust')
+```
+
+
+```{r}
+
+```
+
+### Percentage of outlier
+```{r}
+
+PerOutier = function(df){
+  num=sapply(df, is.numeric)
+  NumOut = function(x){
+    q1 = quantile(x, 0.25, na.rm = T)
+    q2 = quantile(x, 0.50, na.rm = T)
+    q3 = quantile(x, 0.75, na.rm = T)
+    iqr = q3-q1
+    outlier = x[x > q3 + 1.5*iqr | x < q1 - 1.5*iqr]
+    percent = (length(outlier) / length(x))*100
+return(percent)
+  }
+  data=sapply(df[,num], NumOut)
+   return(as.data.frame(data))
+}
+
+PerOutier(card)
+```
+
+#### Check the oultier from Data
+```{r}
+
+boxplot(card)
+```
+
+### Convert target Variable as a factor
+```{r}
+card$Class = as.factor(card$Class)
+```
+
+### To Pre-Process and Normalize data
+```{r}
+preObj <- preProcess(card[,-31], method=c("scale","center"))
+newData <- predict(preObj, card[, -31])
+```
+
+
+############################################################################################
+#################################### Predictive Modelling ##################################
+############################################################################################
+
+### Sampling the Data in Train And Test
+```{r}
+
+#### Random Sampling
+set.seed(101)
+
+train = card[sample(seq(1,nrow(card)),(0.7*nrow(card))),]
+
+test = card[sample(seq(1,nrow(card)),(0.3*nrow(card))),]
+```
+
+### Dimention of Data
+
+```{r}
+dim(train)
+
+dim(test)
+```
+
+
+### Decision tree model
+```{r}
+test$Class = as.factor(test$Class)
+
+## tree model fitting
+model.tree = rpart(Class~., data = train, method = 'class', minbucket = 20) 
+
+### get the plot of tree splitting using rpart.plot
+rpart.plot(model.tree)
+
+
+### Prediction on test data
+tree.predict <- predict(model.tree, test, type = "class")
+
+
+### Confusion matrix to get the tabular representation of Actual and Predicted Value
+confusionMatrix(test$Class, tree.predict,positive = "1")
+
+```
+
+
+### model fitting using Logistic Regression
+```{r}
+glm.model <- glm(Class ~ ., data = train, family = "binomial", control = list(maxit = 50))
+
+glm.predict <- predict(glm.model, test, type = "response")
+
+table(test$Class, glm.predict > 0.5)
+
+summary(glm.model)
+```
+
+
+### Random forest Model
+```{r}
+### get the mtry parameter for random forest
+
+# mtry = round(sqrt(length(names(train))))
+
+set.seed(1)
+
+model.rf = randomForest(Class~., data = train, ntree = 2000, nodesize = 20)
+
+predict.rf = predict(model.rf, test, type = 'prob')
+
+test$pred_class = ifelse(predict.rf[,2]>0.5, 1, 0)
+
+test$pred_class = as.factor(test$pred_class)
+
+confusionMatrix(test$Class, test$pred_class)
+```
+
+
+#### ROC curve for performace Evaluation
+```{r}
+roc_rf = roc(test[,Class],predict.rf[,2])
+
+plot(roc_rf)
+```
+
+```{r}
+
+```
+
