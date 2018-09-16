@@ -1,0 +1,219 @@
+---
+title: "Default of Credit Card Clients Dataset"
+author: "Nitin Khandare"
+date: "August 31, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(caret)
+library(class)
+library(randomForest)
+library(AppliedPredictiveModeling)
+library(lattice)
+credit = read.csv("E:/Term 3/CaseStudies/Credit_Card_Defaulter/UCI_Credit_Card.csv")
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+### structure of The Data
+```{r}
+str(credit)
+```
+
+#### Summary of the Data
+```{r}
+summary(credit)
+```
+
+#### Specific columns transformation
+```{r}
+
+credit$AGE<-cut(credit$AGE, breaks = c( 10, 30,50,100), labels = c("young", "middle","senior"))
+
+unique(credit$SEX)
+credit$SEX<-cut(credit$SEX, 2,labels = c("Female","Male"))
+
+unique(credit$MARRIAGE)
+credit$MARRIAGE<-cut(credit$MARRIAGE, 4,labels = c("married","single","Devorce","other"))
+
+convertcat <- c(3:5)
+credit[,convertcat] <- data.frame(apply(credit[convertcat],2, as.factor))
+#converting default paymnet variable to categorical
+credit$default.payment.next.month<-as.factor(credit$default.payment.next.month)
+str(credit)
+
+```
+
+### Convert some Columns into Factor  
+```{r}
+factor_vars <- c('SEX','EDUCATION','MARRIAGE','default.payment.next.month')
+
+
+credit[factor_vars] <- lapply(credit[factor_vars], function(x) as.factor(x))
+```
+
+### Dimension of Data
+```{r}
+dim(credit)
+```
+
+
+### Check the Missinge Value From The Data
+```{r}
+colSums(is.na(credit))
+
+VIM::aggr(credit)
+```
+
+### check the Outlier in Data
+```{r}
+boxplot(credit)
+```
+
+### Perecentage Of Outlier in Data
+```{r}
+PerOutier = function(df){
+  num=sapply(df, is.numeric)
+  NumOut = function(x){
+    q1 = quantile(x, 0.25, na.rm = T)
+    q2 = quantile(x, 0.50, na.rm = T)
+    q3 = quantile(x, 0.75, na.rm = T)
+    iqr = q3-q1
+    outlier = x[x > q3 + 1.5*iqr | x < q1 - 1.5*iqr]
+    percent = (length(outlier) / length(x))*100
+return(percent)
+  }
+  data=sapply(df[,num], NumOut)
+   return(as.data.frame(data))
+}
+
+PerOutier(credit)
+
+
+```
+
+
+### it Shows Correlation graph with cor value between columns
+```{r}
+library(psych)
+pairs.panels(credit[c("PAY_0","PAY_2","PAY_3","PAY_5")])
+```
+
+```{r}
+pairs.panels(credit[c("BILL_AMT1","BILL_AMT2","BILL_AMT3","BILL_AMT4","BILL_AMT5")])
+```
+
+```{r}
+pairs.panels(credit[c("PAY_AMT1","PAY_AMT2","PAY_AMT3","PAY_AMT4","PAY_AMT5")])
+```
+
+# RELATION BTWN DEFAULT AND SEX
+```{r}
+
+ggplot(credit, aes(x = SEX, fill = default.payment.next.month)) +
+  geom_bar() +
+  labs(x = 'Sex') +
+  theme_economist_white()
+
+```
+
+```{r}
+ggplot(credit, aes(x = credit$AGE,y = BILL_AMT3, fill = default.payment.next.month)) + geom_bar(stat = "identity") + labs(x = credit$AGE) + theme_classic() + theme_dark()
+```
+
+```{r}
+ggplot(credit, aes(x = MARRIAGE, fill = default.payment.next.month)) +
+  geom_bar() +
+  labs(x = 'Mariage') +
+  theme_excel() + theme_bw()
+
+```
+
+```{r}
+ggplot(credit, aes(AGE, fill = default.payment.next.month)) + 
+  geom_histogram(binwidth = 6) + 
+  # I include education since we know (a priori) it's a significant predictor
+  facet_grid(.~EDUCATION) + 
+  
+```
+
+
+
+```{r}
+
+# Boxplots amount of credit lim by education 
+# observations (points) are overlayed and jittered
+qplot(EDUCATION, LIMIT_BAL, data=credit, geom=c("boxplot", "jitter"), 
+      fill=EDUCATION, main="LIMIT_AMT by Education catagory",
+      xlab="", ylab="amount of given credit")
+```
+
+
+
+
+
+
+
+
+
+```{r}
+ 
+#DIMENTIONZLITY REDUCTION
+
+# Principal component analysis (PCA) is used to summarize the information in a data set described by multiple variables.
+# PCA reduces the dimensionality of data containing a large set of variables. This is achieved by transforming the initial variables into a new small set of variables without loosing the most important information in the original data set.
+  
+# pca applies only to quantitative features
+
+# we are going to explore the correlations between our Bill_amt 1 to6 , pay_amt 1 to 6 and limit_bal
+
+df <- A[,c(2,13,14,15,16,17,18,19,20,21,22,23,24)]
+head(df)
+
+
+
+
+res.pca <- PCA(df, scale.unit = TRUE, graph = TRUE)
+
+
+
+# visualisation of the correlation matrix
+
+
+chart.Correlation(df, histogram=TRUE, pch=19)
+
+
+print(res.pca)
+
+
+head(res.pca$var$coord)
+
+# Cos2 : quality of the representation for variables on the factor map
+head(res.pca$var$cos2)
+
+
+# Contributions of the variables to the principal components
+
+# The contributions of variables in accounting for the variability in a given principal component are (in percentage) : (variable.cos2 * 100) / (total cos2 of the component)
+
+
+head(res.pca$var$contrib)
+
+# The larger the value of the contribution, the more the variable contributes to the component.
+
+
+# The function dimdesc()[in FactoMineR] can be used to identify the most correlated variables with a given principal component.
+
+
+dimdesc(res.pca, axes = 1:3, proba = 0.05)
+
+res.desc <- dimdesc(res.pca, axes = c(1,2))
+
+res.desc
+
+res.desc$Dim.1
+```
+
